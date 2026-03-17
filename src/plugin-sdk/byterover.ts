@@ -5,7 +5,10 @@ export type { OpenClawPluginApi, PluginLogger } from "../plugins/types.js";
 export type {
   ContextEngine,
   ContextEngineInfo,
+  ContextEngineRuntimeContext,
   AssembleResult,
   CompactResult,
   IngestResult,
 } from "../context-engine/types.js";
+export { delegateCompactionToRuntime } from "../context-engine/delegate-compaction.runtime.js";
+export type { DelegateCompactionParams } from "../context-engine/delegate-compaction.runtime.js";

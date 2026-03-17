@@ -7,6 +7,18 @@ import {
   extractLatestUserQuery,
 } from "./context-engine.js";
 
+vi.mock("../../src/context-engine/delegate-compaction.runtime.js", () => ({
+  delegateCompactionToRuntime: vi.fn(async () => ({
+    ok: true,
+    compacted: true,
+    reason: "mock runtime compaction",
+  })),
+}));
+
+const { delegateCompactionToRuntime: mockDelegate } =
+  await import("../../src/context-engine/delegate-compaction.runtime.js");
+const mockedDelegate = vi.mocked(mockDelegate);
+
 function makeLogger(): PluginLogger {
   return {
     debug: vi.fn(),
@@ -37,14 +49,19 @@ describe("ByteRoverContextEngine", () => {
     expect(result).toEqual({ ingested: false });
   });
 
-  it("compact returns not-compacted", async () => {
+  it("compact delegates to runtime compaction", async () => {
     const engine = new ByteRoverContextEngine({}, makeLogger());
-    const result = await engine.compact({
+    const params = {
       sessionId: "s1",
       sessionFile: "/tmp/s1.jsonl",
-    });
+      tokenBudget: 128_000,
+      runtimeContext: { workspaceDir: "/tmp/workspace" },
+    };
+    const result = await engine.compact(params);
+
+    expect(mockedDelegate).toHaveBeenCalledWith(params);
     expect(result.ok).toBe(true);
-    expect(result.compacted).toBe(false);
+    expect(result.compacted).toBe(true);
   });
 
   it("afterTurn skips heartbeat turns", async () => {

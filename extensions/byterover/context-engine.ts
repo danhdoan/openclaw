@@ -1,10 +1,12 @@
-import type {
-  ContextEngine,
-  ContextEngineInfo,
-  AssembleResult,
-  CompactResult,
-  IngestResult,
-  PluginLogger,
+import {
+  delegateCompactionToRuntime,
+  type ContextEngine,
+  type ContextEngineInfo,
+  type ContextEngineRuntimeContext,
+  type AssembleResult,
+  type CompactResult,
+  type IngestResult,
+  type PluginLogger,
 } from "openclaw/plugin-sdk/byterover";
 import { brvCurate, brvQuery, type BrvProcessConfig } from "./brv-process.js";
 import { stripUserMetadata, extractSenderInfo, stripAssistantTags } from "./message-utils.js";
@@ -16,7 +18,7 @@ import { stripUserMetadata, extractSenderInfo, stripAssistantTags } from "./mess
  *   - afterTurn  → `brv curate` (feed conversation turns for curation)
  *   - assemble   → `brv query`  (retrieve curated knowledge as system prompt addition)
  *   - ingest     → no-op (afterTurn handles batch ingestion)
- *   - compact    → not owned (runtime handles compaction via legacy path)
+ *   - compact    → delegates to built-in runtime compaction (ownsCompaction: false)
  */
 export class ByteRoverContextEngine implements ContextEngine {
   readonly info: ContextEngineInfo = {
@@ -195,20 +197,21 @@ export class ByteRoverContextEngine implements ContextEngine {
   }
 
   // ---------------------------------------------------------------------------
-  // compact — we don't own compaction; return not-compacted
+  // compact — delegate to the built-in runtime compaction
   // ---------------------------------------------------------------------------
 
-  async compact(_params: {
+  async compact(params: {
     sessionId: string;
+    sessionKey?: string;
     sessionFile: string;
     tokenBudget?: number;
     force?: boolean;
+    currentTokenCount?: number;
+    compactionTarget?: "budget" | "threshold";
+    customInstructions?: string;
+    runtimeContext?: ContextEngineRuntimeContext;
   }): Promise<CompactResult> {
-    return {
-      ok: true,
-      compacted: false,
-      reason: "ByteRover does not own compaction; delegating to runtime.",
-    };
+    return delegateCompactionToRuntime(params);
   }
 
   // ---------------------------------------------------------------------------
