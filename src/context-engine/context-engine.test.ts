@@ -235,6 +235,58 @@ class SessionKeyRuntimeErrorEngine implements ContextEngine {
   }
 }
 
+class LegacyAssembleStrictEngine implements ContextEngine {
+  readonly info: ContextEngineInfo = {
+    id: "legacy-assemble-strict",
+    name: "Legacy Assemble Strict Engine",
+  };
+  readonly assembleCalls: Array<Record<string, unknown>> = [];
+
+  async ingest(_params: {
+    sessionId: string;
+    sessionKey?: string;
+    message: AgentMessage;
+    isHeartbeat?: boolean;
+  }): Promise<IngestResult> {
+    return { ingested: true };
+  }
+
+  async assemble(params: {
+    sessionId: string;
+    sessionKey?: string;
+    messages: AgentMessage[];
+    tokenBudget?: number;
+    prompt?: string;
+  }): Promise<AssembleResult> {
+    this.assembleCalls.push({ ...params });
+    if (Object.prototype.hasOwnProperty.call(params, "sessionKey")) {
+      throw new Error("Unrecognized key(s) in object: 'sessionKey'");
+    }
+    if (Object.prototype.hasOwnProperty.call(params, "prompt")) {
+      throw new Error("Unrecognized key(s) in object: 'prompt'");
+    }
+    return {
+      messages: params.messages,
+      estimatedTokens: 3,
+    };
+  }
+
+  async compact(_params: {
+    sessionId: string;
+    sessionKey?: string;
+    sessionFile: string;
+    tokenBudget?: number;
+    compactionTarget?: "budget" | "threshold";
+    customInstructions?: string;
+    runtimeContext?: Record<string, unknown>;
+  }): Promise<CompactResult> {
+    return {
+      ok: true,
+      compacted: false,
+    };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. Engine contract tests
 // ═══════════════════════════════════════════════════════════════════════════
@@ -733,6 +785,29 @@ describe("assemble() prompt forwarding", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).not.toHaveProperty("prompt");
     expect(Object.keys(calls[0] as object)).not.toContain("prompt");
+  });
+
+  it("retries strict legacy assemble without sessionKey and prompt", async () => {
+    const engineId = `prompt-legacy-${Date.now().toString(36)}`;
+    const strictEngine = new LegacyAssembleStrictEngine();
+    registerContextEngine(engineId, () => strictEngine);
+
+    const engine = await resolveContextEngine(configWithSlot(engineId));
+    const result = await engine.assemble({
+      sessionId: "s1",
+      sessionKey: "agent:main:test",
+      messages: [makeMockMessage("user", "hello")],
+      prompt: "hello",
+    });
+
+    expect(result.estimatedTokens).toBe(3);
+    expect(strictEngine.assembleCalls).toHaveLength(3);
+    expect(strictEngine.assembleCalls[0]).toHaveProperty("sessionKey", "agent:main:test");
+    expect(strictEngine.assembleCalls[0]).toHaveProperty("prompt", "hello");
+    expect(strictEngine.assembleCalls[1]).not.toHaveProperty("sessionKey");
+    expect(strictEngine.assembleCalls[1]).toHaveProperty("prompt", "hello");
+    expect(strictEngine.assembleCalls[2]).not.toHaveProperty("sessionKey");
+    expect(strictEngine.assembleCalls[2]).not.toHaveProperty("prompt");
   });
 });
 
